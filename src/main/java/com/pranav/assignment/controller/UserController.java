@@ -1,10 +1,5 @@
 package com.pranav.assignment.controller;
 
-import java.time.Instant;
-import java.util.Date;
-
-import javax.naming.NameNotFoundException;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -16,7 +11,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.pranav.assignment.dto.JwtResponse;
@@ -28,8 +22,6 @@ import com.pranav.assignment.service.CustomUserDetailsService;
 import com.pranav.assignment.service.RefreshTokenService;
 import com.pranav.assignment.service.RevokeTokenService;
 import com.pranav.assignment.utility.JwtUtil;
-
-import io.jsonwebtoken.ExpiredJwtException;
 
 @RestController
 public class UserController {
@@ -51,7 +43,7 @@ public class UserController {
 
 	@PostMapping("/register")
 	public User register(@RequestBody User user) {
-		if(!user.getUsername().isBlank() && !user.getPassword().isBlank())
+		if (!user.getUsername().isBlank() && !user.getPassword().isBlank())
 			return userService.createUser(user);
 		else
 			throw new BlankCredentialsException("Username or password is empty.");
@@ -59,7 +51,7 @@ public class UserController {
 
 	@PostMapping("/login")
 	public JwtResponse login(@RequestBody User user) {
-		if(user.getUsername().isBlank() || user.getPassword().isBlank())
+		if (user.getUsername().isBlank() || user.getPassword().isBlank())
 			throw new BlankCredentialsException("Username or password is empty.");
 		try {
 			authenticationManager
@@ -74,25 +66,33 @@ public class UserController {
 	}
 
 	@PostMapping("/refreshtoken")
-	public JwtResponse refreshToken(@RequestBody RefreshTokenRequest request) {
+	public JwtResponse refreshToken(@RequestHeader("Authorization") String token,
+			@RequestBody RefreshTokenRequest request) {
 		try {
+			// validating refresh token
 			RefreshToken refreshToken = refreshTokenService.findByToken(request.getToken());
 			User user = (refreshTokenService.verifyExpiration(refreshToken)).getUser();
+
+			// generating new token
 			String jwt = jwtUtil.generateToken(user.getUsername());
+
+			String tokenValue = token.replace("Bearer ", "");
+			// adding current token to blacklist
+			revokeTokenService.revokeToken(tokenValue);
 			return new JwtResponse(jwt, refreshToken.getToken());
 		} catch (Exception e) {
 			throw new UsernameNotFoundException("Invalid Refresh token.");
 		}
 	}
 
-	@PostMapping("/logout")
+	@PostMapping("/revoketoken")
 	public ResponseEntity<String> logout(@RequestHeader("Authorization") String token) {
 		String tokenValue = token.replace("Bearer ", "");
-		//adding token to blacklist
+		// adding token to blacklist
 		revokeTokenService.revokeToken(tokenValue);
-		//deleting refresh token for for revoked token
+		// deleting refresh token for revoked access-token
 		refreshTokenService.deleteByUsername(jwtUtil.extractUsername(tokenValue));
-		return new ResponseEntity<>("Token revoked and logged out successfully", HttpStatus.OK);
+		return new ResponseEntity<>("Token revoked successfully", HttpStatus.OK);
 	}
 
 }
